@@ -16,7 +16,7 @@ class TokenRateLimiter implements IRateLimitingStrategy{
     public TokenRateLimiter(String clientId, int rate, int MAX_TOKENS){
         this.clientId = clientId;
         this.rate = rate;
-        this.tokens = 0;
+        this.tokens = MAX_TOKENS;
         this.lastRequestTS = System.currentTimeMillis();
         this.MAX_TOKENS = MAX_TOKENS;
         this.lock = new ReentrantLock();
@@ -30,17 +30,18 @@ class TokenRateLimiter implements IRateLimitingStrategy{
         try{
             long now = System.currentTimeMillis();
             long timeElapsed = now - lastRequestTS;
-            lastRequestTS = now;
 
-            int tokensToAdd = (int)Math.ceil((Math.floor(timeElapsed/60.0) * (rate/60.0)));
-            tokens = Math.min(MAX_TOKENS, tokens + tokensToAdd);
+            int tokensToAdd = (int) ((timeElapsed * rate)/1000);
+
+            if(tokensToAdd > 0){
+                tokens = Math.min(MAX_TOKENS, tokens + tokensToAdd);
+                lastRequestTS += (tokensToAdd * 1000L)/rate;
+            }
 
             if(tokens > 0){
                 tokens--;
                 return true;
             }
-        }catch(RuntimeException e){
-            // Exception handling
         }finally{
             lock.unlock();
         }
@@ -66,6 +67,17 @@ public class RateLimiter{
 
     public void addClient(String clientId, IRateLimitingStrategy strategy){
         clientMap.computeIfAbsent(clientId, k->strategy);
+    }
+
+    public boolean isAllowed(String clientId){
+
+        if(clientMap.containsKey(clientId)){
+            IRateLimitingStrategy clientStrategy = clientMap.get(clientId);
+
+            return clientStrategy.isAllowed();
+        }
+
+        return false;
     }
 
     public static void main(String[] args) {
