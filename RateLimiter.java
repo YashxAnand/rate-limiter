@@ -1,5 +1,6 @@
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.*;
 
 interface IRateLimitingStrategy{
     boolean isAllowed();
@@ -52,9 +53,40 @@ class TokenRateLimiter implements IRateLimitingStrategy{
 }
 
 class SlidingWindowRateLimiter implements IRateLimitingStrategy{
+    private String clientId;
+    private final int requestLimit;
+    private long windowTime;
+    private final ReentrantLock lock;
+    private final Queue<Long> requestQueue;
+
+    public SlidingWindowRateLimiter(String clientId, int requestLimit, long windowTime){
+        this.clientId = clientId;
+        this.requestLimit = requestLimit;
+        this.windowTime = windowTime;
+        this.lock = new ReentrantLock();
+        this.requestQueue = new LinkedList<>();
+    }
+
     @Override 
     public boolean isAllowed(){
-        return true;
+        lock.lock();
+
+        try{
+            long now = System.currentTimeMillis();
+
+            while(!requestQueue.isEmpty() && requestQueue.peek() < now - windowTime)
+                requestQueue.poll();
+
+            if(requestQueue.size() < requestLimit){
+                requestQueue.add(now);
+                return true;
+            }
+        
+        }finally{
+            lock.unlock();
+        }
+
+        return false;
     }
 }
 
